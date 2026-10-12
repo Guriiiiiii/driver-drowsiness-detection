@@ -1,0 +1,2 @@
+# The audit notebook is exploration, not the system: keep it out of the repository language stats
+*.ipynb linguist-documentation

@@ -1,1 +1,11 @@
-pip freeze | findstr /i "ultralytics mediapipe opencv numpy pyttsx3 onnx openvino torch" > requirements.txt
+# Core: both frontends and the decision layer
+ultralytics>=8.1
+mediapipe>=0.10
+opencv-python>=4.8
+numpy>=1.26
+
+# Optional: spoken alerts (falls back to console output without it)
+# pip install pyttsx3
+
+# Optional: backend benchmark (src/bench_backends.py, src/bench_one.py)
+# pip install onnx onnxruntime openvino
