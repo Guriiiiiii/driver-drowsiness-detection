@@ -49,6 +49,7 @@ The alarm never downgrades while events keep occurring.
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum
+from turtle import st
 from typing import Optional
 
 
@@ -79,7 +80,7 @@ class Config:
     microsleep_count_alarm: int = 3      # this many microsleeps in the window
 
     # --- leaving the alarm ---
-    alarm_release_s: float = 45.0        # quiet time before downgrading
+    alarm_release_s: float = 3.0        # quiet time before downgrading
 
     # --- blink ---
     blink_max_s: float = 0.4             # closure shorter than this = blink
@@ -279,48 +280,66 @@ class DrowsinessMonitor:
 
     # ------------------------------------------------------------------
     def _decide(self, t: float, st: State) -> AlertLevel:
-        """Hysteresis: harder to leave an alert state than to enter it.
-
-        Without it the system oscillates around the threshold and the alarm
-        flickers — useless, and dangerous, in a real vehicle.
-        """
         cfg = self.cfg
 
-        # --- signals that need no window ---
+        # 1. Sustained eye closure: immediate drowsiness alert
         if st.current_closure_s >= cfg.microsleep_alarm_s:
             self._level = AlertLevel.DROWSY
             return self._level
-        if st.microsleeps >= cfg.microsleep_count_alarm:
+
+        # 2. Repeated microsleeps trigger DROWSY only
+        # while the fatigue event is recent.
+        if (
+            st.microsleeps >= cfg.microsleep_count_alarm
+            and st.quiet_s < cfg.alarm_release_s
+         ):
             self._level = AlertLevel.DROWSY
             return self._level
 
-        # --- window-based signals, only when the window is trustworthy ---
+        # 3. Evaluate PERCLOS when enough valid observations exist
         if st.perclos_valid:
-            if self._level is AlertLevel.DROWSY:
+            if st.perclos >= cfg.perclos_alarm:
+                self._level = AlertLevel.DROWSY
+                return self._level
+
+            if st.yawns_in_window >= cfg.yawn_alarm_count:
+                self._level = AlertLevel.DROWSY
+                return self._level
+
+            if st.perclos >= cfg.perclos_warn:
+                self._level = AlertLevel.WARNING
+                return self._level
+
+            # Recover only when PERCLOS falls below its release threshold
+            if self._level == AlertLevel.DROWSY:
                 if st.perclos < cfg.perclos_release:
                     self._level = AlertLevel.AWAKE
                 return self._level
-            if st.perclos >= cfg.perclos_alarm or st.yawns_in_window >= cfg.yawn_alarm_count:
-                self._level = AlertLevel.DROWSY
-            elif st.perclos >= cfg.perclos_warn:
-                self._level = AlertLevel.WARNING
-            else:
-                self._level = AlertLevel.AWAKE
-            return self._level
 
-        # --- fallback while the window fills ---
-        if self._level is AlertLevel.DROWSY:
-            # the only way out without PERCLOS: sustained quiet
+        # 4. Recover from event-based alerts after a quiet period
+        if self._level == AlertLevel.DROWSY:
             if st.quiet_s >= 2 * cfg.alarm_release_s:
                 self._level = AlertLevel.AWAKE
             elif st.quiet_s >= cfg.alarm_release_s:
                 self._level = AlertLevel.WARNING
+
             return self._level
 
-        if st.longest_closure_s >= cfg.microsleep_s or st.microsleeps:
+        # 5. Keep WARNING stable until the recovery period expires
+        if self._level == AlertLevel.WARNING:
+            if st.quiet_s >= cfg.alarm_release_s:
+                self._level = AlertLevel.AWAKE
+            return self._level
+
+        # 6. A recent microsleep can trigger WARNING
+        if (
+            st.microsleeps > 0
+            and st.quiet_s < cfg.alarm_release_s
+        ):
             self._level = AlertLevel.WARNING
         else:
             self._level = AlertLevel.AWAKE
+
         return self._level
 
     def _reasons(self, st: State) -> list:

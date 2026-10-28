@@ -1,18 +1,21 @@
-# environnement
+# Python environments
 venv/
 .venv/
 __pycache__/
-*.pyc
+*.py[cod]
 
-# données et sorties
+# Data and generated outputs
 data/
 runs/
-models/
-face_landmarker.task
 *.avi
 *.mp4
 
-# outils
+# IDE and logs
 .vscode/
+.idea/
 *.log
 kernel.errors.txt
+
+# Environment variables
+.env
+.env.*
